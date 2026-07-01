@@ -22,7 +22,8 @@ class CourseController extends Controller
                 ->exists();
 
             if (!$enrolled) {
-                abort(403, 'You are not enrolled in this course.');
+                return redirect()->route('dashboard')
+                    ->with('error', 'You need to enroll in this course before you can access it.');
             }
         }
 
@@ -100,7 +101,7 @@ class CourseController extends Controller
         } 
         elseif ($request->hasFile('file')) {
             $folder = $validated['type'] === 'video' ? 'videos' : 'materials';
-            $path = $request->file('file')->store($folder, 'public');
+            $path = $request->file('file')->store($folder, 'uploads');
             $data['content'] = $path; 
         }
 

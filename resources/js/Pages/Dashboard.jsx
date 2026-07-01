@@ -315,6 +315,12 @@ export default function Dashboard({ auth, stats, user_data, faculties, courses, 
                             </div>
                         </div>
                     )}
+                    {flash.error && (
+                        <div className="bg-red-50 text-red-700 p-4 rounded-2xl font-black flex items-center space-x-3 shadow-lg">
+                            <svg className="w-6 h-6 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M6 18L18 6M6 6l12 12" /></svg>
+                            <span>{flash.error}</span>
+                        </div>
+                    )}
 
                     {!currentTab ? (
                         <>

@@ -46,7 +46,7 @@ class User extends Authenticatable
     public function getAvatarUrlAttribute(): string
     {
         if ($this->avatar) {
-            return Storage::disk('public')->url($this->avatar);
+            return Storage::disk('uploads')->url($this->avatar);
         }
         if ($this->google_avatar) {
             return $this->google_avatar;

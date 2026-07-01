@@ -111,7 +111,7 @@ export default function CourseLearning({ course, completedLessonIds: initial }) 
             if (topic.content) {
                 return (
                     <video controls className="w-full rounded-2xl bg-black">
-                        <source src={`/storage/${topic.content}`} />
+                        <source src={`/uploads/${topic.content}`} />
                         Your browser does not support HTML5 video.
                     </video>
                 );
@@ -128,7 +128,7 @@ export default function CourseLearning({ course, completedLessonIds: initial }) 
         }
 
         if (topic.type === 'pdf') {
-            const pdfSrc = topic.content ? `/storage/${topic.content}` : null;
+            const pdfSrc = topic.content ? `/uploads/${topic.content}` : null;
             return pdfSrc ? (
                 <iframe
                     src={pdfSrc}

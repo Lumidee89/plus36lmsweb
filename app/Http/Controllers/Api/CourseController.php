@@ -123,7 +123,7 @@ class CourseController extends Controller
             $data['content'] = $validated['content'];
         } elseif ($request->hasFile('file')) {
             $folder = $validated['type'] === 'video' ? 'videos' : 'materials';
-            $data['content'] = $request->file('file')->store($folder, 'public');
+            $data['content'] = $request->file('file')->store($folder, 'uploads');
         }
 
         $topic = Topic::create($data);
@@ -231,7 +231,7 @@ class CourseController extends Controller
         $contentUrl = null;
 
         if ($topic->content && in_array($topic->type, ['video', 'pdf'], true)) {
-            $contentUrl = Storage::disk('public')->url($topic->content);
+            $contentUrl = Storage::disk('uploads')->url($topic->content);
         }
 
         return [

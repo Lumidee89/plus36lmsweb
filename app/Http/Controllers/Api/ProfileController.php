@@ -67,9 +67,9 @@ class ProfileController extends Controller
 
         if ($request->hasFile('avatar')) {
             if ($user->avatar) {
-                Storage::disk('public')->delete($user->avatar);
+                Storage::disk('uploads')->delete($user->avatar);
             }
-            $user->avatar = $request->file('avatar')->store('avatars', 'public');
+            $user->avatar = $request->file('avatar')->store('avatars', 'uploads');
         }
 
         $user->save();
@@ -94,10 +94,10 @@ class ProfileController extends Controller
         $user = $request->user();
 
         if ($user->avatar) {
-            Storage::disk('public')->delete($user->avatar);
+            Storage::disk('uploads')->delete($user->avatar);
         }
 
-        $user->avatar = $request->file('avatar')->store('avatars', 'public');
+        $user->avatar = $request->file('avatar')->store('avatars', 'uploads');
         $user->save();
 
         return response()->json([
@@ -121,7 +121,7 @@ class ProfileController extends Controller
         }
 
         if ($user->avatar) {
-            Storage::disk('public')->delete($user->avatar);
+            Storage::disk('uploads')->delete($user->avatar);
         }
 
         $user->tokens()->delete();
