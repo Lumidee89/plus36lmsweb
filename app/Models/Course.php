@@ -23,28 +23,33 @@ class Course extends Model
         'price',
         'duration',
     ];
-
-    /**
-     * Get the tutor (user) that owns the course.
-     */
     public function tutor(): BelongsTo
     {
         return $this->belongsTo(User::class, 'user_id');
     }
-
-    /**
-     * Get the faculty department this course belongs to.
-     */
-    public function faculty(): BelongsTo
+    public function faculty()
     {
         return $this->belongsTo(Faculty::class);
     }
     public function lessons()
     {
-        // A Course has many Lessons
         return $this->hasMany(Lesson::class);
     }
-    public function user() {
-        return $this->belongsTo(User::class);
+    public function user()
+    {
+        return $this->belongsTo(User::class, 'user_id');
+    }
+    public function students()
+    {
+        return $this->belongsToMany(User::class, 'enrollments')->withPivot('amount_paid')->withTimestamps();
+    }
+    public function enrollments()
+    {
+        return $this->hasMany(Enrollment::class);
+    }
+
+    public function exam()
+    {
+        return $this->hasOne(Exam::class);
     }
 }

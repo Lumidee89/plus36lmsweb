@@ -3,11 +3,48 @@
 namespace App\Http\Controllers;
 
 use App\Models\Course;
+use App\Models\Enrollment;
+use App\Models\LessonCompletion;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
+use Inertia\Inertia;
 
 class CourseController extends Controller
 {
+    public function show(Course $course)
+    {
+        $user = Auth::user();
+
+        if ($user->role === 'student') {
+            $enrolled = Enrollment::where('user_id', $user->id)
+                ->where('course_id', $course->id)
+                ->exists();
+
+            if (!$enrolled) {
+                abort(403, 'You are not enrolled in this course.');
+            }
+        }
+
+        $course->load([
+            'lessons' => fn($q) => $q->orderBy('order')->orderBy('id'),
+            'lessons.topics',
+            'user',
+            'faculty',
+            'exam',
+        ]);
+
+        $completedLessonIds = LessonCompletion::where('user_id', $user->id)
+            ->whereIn('lesson_id', $course->lessons->pluck('id'))
+            ->pluck('lesson_id')
+            ->toArray();
+
+        return Inertia::render('CourseLearning', [
+            'course'             => $course,
+            'completedLessonIds' => $completedLessonIds,
+        ]);
+    }
+
     /**
      * Store a newly created course in storage.
      */
@@ -21,7 +58,10 @@ class CourseController extends Controller
             'duration' => 'required|string',
         ]);
 
-        $request->user()->courses()->create($validated);
+        Course::create([
+            ...$validated,
+            'user_id' => Auth::id(),
+        ]);
 
         return back()->with('message', 'Course published successfully to the Academy!');
     }
@@ -71,5 +111,82 @@ class CourseController extends Controller
         }
 
         return back()->withErrors(['error' => 'Failed to save to database.']);
+    }
+    public function enroll(Request $request)
+    {
+        $request->validate([
+            'course_id' => 'required|exists:courses,id',
+            'amount' => 'required|numeric',
+            'reference' => 'required|string',
+        ]);
+
+        DB::beginTransaction();
+
+        try {
+
+            $alreadyEnrolled = \App\Models\Enrollment::where([
+                'user_id' => Auth::id(),
+                'course_id' => $request->course_id,
+            ])->exists();
+
+            if ($alreadyEnrolled) {
+
+                return response()->json([
+                    'message' => 'Already enrolled'
+                ], 422);
+            }
+
+            // ENROLLMENT
+            \App\Models\Enrollment::create([
+                'user_id' => Auth::id(),
+                'course_id' => $request->course_id,
+                'amount_paid' => $request->amount,
+            ]);
+
+            $course = Course::with('user')->findOrFail($request->course_id);
+
+            // Student activity
+            \App\Models\Activity::create([
+                'user_id' => Auth::id(),
+                'type' => 'enrollment',
+                'description' => 'Enrolled in "' . $course->title . '"',
+            ]);
+
+            // Tutor activity
+            if ($course->user) {
+                \App\Models\Activity::create([
+                    'user_id' => $course->user->id,
+                    'type' => 'student_enrollment',
+                    'description' => Auth::user()->name . ' enrolled in "' . $course->title . '"',
+                ]);
+            }
+
+            // PAYMENT
+            DB::table('payments')->insert([
+                'user_id' => Auth::id(),
+                'course_id' => $request->course_id,
+                'transaction_id' => $request->reference,
+                'amount' => $request->amount,
+                'payment_status' => 'completed',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+
+            DB::commit();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Enrollment successful'
+            ]);
+
+        } catch (\Exception $e) {
+
+            DB::rollBack();
+
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 500);
+        }
     }
 }

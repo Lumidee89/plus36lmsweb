@@ -22,10 +22,10 @@ export default function StudentIDCard({ user, track }) {
                     <div className="relative mb-6">
                         <div className="w-28 h-28 rounded-[2rem] bg-gradient-to-br from-[#00d2d3] to-teal-600 p-[3px] shadow-2xl">
                             <div className="w-full h-full rounded-[calc(2rem-3px)] bg-[#1a1d21] flex items-center justify-center overflow-hidden">
-                                <img 
-                                    src={`https://api.dicebear.com/7.x/initials/svg?seed=${user.name}&backgroundColor=1a1d21&fontFamily=Arial&bold=true`} 
-                                    alt={user.name} 
-                                    className="w-full h-full"
+                                <img
+                                    src={user.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.name)}&background=1a1d21&color=00d2d3&size=128`}
+                                    alt={user.name}
+                                    className="w-full h-full object-cover"
                                 />
                             </div>
                         </div>

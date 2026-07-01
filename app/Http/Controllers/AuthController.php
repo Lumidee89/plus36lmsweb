@@ -9,7 +9,9 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
 use Inertia\Inertia; // Import the Inertia facade
+use Laravel\Socialite\Facades\Socialite;
 
 class AuthController extends Controller
 {
@@ -27,6 +29,73 @@ class AuthController extends Controller
     public function showRegister()
     {
         return Inertia::render('Auth/Register');
+    }
+
+    /**
+     * Send the user to Google's OAuth consent screen.
+     */
+    public function redirectToGoogle()
+    {
+        return Socialite::driver('google')->redirect();
+    }
+
+    /**
+     * Create or update a student account from Google and log the user in.
+     */
+    public function handleGoogleCallback(Request $request)
+    {
+        try {
+            $googleUser = Socialite::driver('google')->user();
+        } catch (\Throwable $exception) {
+            Log::error('Google SSO failure: '.$exception->getMessage());
+
+            return redirect()
+                ->route('login')
+                ->withErrors(['email' => 'Unable to authenticate with Google. Please try again.']);
+        }
+
+        $user = User::where('google_id', $googleUser->getId())
+            ->orWhere('email', $googleUser->getEmail())
+            ->first();
+
+        if ($user) {
+            $user->forceFill([
+                'google_id' => $googleUser->getId(),
+                'google_avatar' => $googleUser->getAvatar(),
+                'email_verified_at' => $user->email_verified_at ?? now(),
+            ])->save();
+        } else {
+            $user = User::create([
+                'name' => $googleUser->getName() ?: $googleUser->getNickname() ?: 'Google User',
+                'email' => $googleUser->getEmail(),
+                'password' => Hash::make(Str::random(32)),
+                'role' => 'student',
+                'google_id' => $googleUser->getId(),
+                'google_avatar' => $googleUser->getAvatar(),
+                'email_verified_at' => now(),
+            ]);
+
+            try {
+                Mail::to($user->email)->send(new WelcomeEmail($user));
+            } catch (\Exception $e) {
+                Log::error("Mail failure: " . $e->getMessage());
+            }
+
+            $user->activities()->create([
+                'description' => 'Created a new student account with Google',
+                'type' => 'auth'
+            ]);
+        }
+
+        Auth::login($user, true);
+        $request->session()->regenerate();
+
+        $user->activities()->create([
+            'description' => 'You signed into the academy portal with Google',
+            'type' => 'auth'
+        ]);
+
+        return redirect()->intended('/dashboard');
     }
 
     /**
