@@ -3,9 +3,11 @@
 namespace App\Http\Controllers;
 
 use App\Models\Achievement;
+use App\Models\Lesson;
 use App\Models\LessonCompletion;
 use App\Models\UserActivityLog;
 use App\Services\AchievementService;
+use App\Services\LessonAccessService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -13,7 +15,7 @@ use Inertia\Inertia;
 
 class ProgressController extends Controller
 {
-    public function __construct(private AchievementService $achievements) {}
+    public function __construct(private AchievementService $achievements, private LessonAccessService $lessonAccess) {}
 
     public function show(Request $request)
     {
@@ -32,6 +34,7 @@ class ProgressController extends Controller
 
         $allAchievements = Achievement::all()->map(function ($achievement) use ($user) {
             $earned = $user->achievements->firstWhere('id', $achievement->id);
+
             return [
                 'key' => $achievement->key,
                 'name' => $achievement->name,
@@ -66,8 +69,18 @@ class ProgressController extends Controller
         return back();
     }
 
+    public function checkIn(Request $request)
+    {
+        $streak = $request->user()->streak()->firstOrCreate([], ['current_streak' => 0, 'longest_streak' => 0]);
+        $streak->recordActivity();
+
+        return back()->with('message', 'Daily check-in complete!');
+    }
+
     public function completeLesson(Request $request, int $lessonId)
     {
+        $lesson = Lesson::with(['course', 'assignment'])->findOrFail($lessonId);
+        $this->lessonAccess->assertCanStart(Auth::user(), $lesson);
         LessonCompletion::firstOrCreate(
             ['user_id' => Auth::id(), 'lesson_id' => $lessonId],
             ['completed_at' => Carbon::now()]
@@ -82,7 +95,9 @@ class ProgressController extends Controller
     {
         return $user->enrolledCourses->filter(function ($course) use ($user) {
             $totalLessons = $course->lessons->count();
-            if ($totalLessons === 0) return false;
+            if ($totalLessons === 0) {
+                return false;
+            }
 
             $completedLessons = LessonCompletion::where('user_id', $user->id)
                 ->whereIn('lesson_id', $course->lessons->pluck('id'))
@@ -100,7 +115,7 @@ class ProgressController extends Controller
         $logs = UserActivityLog::where('user_id', $userId)
             ->whereBetween('date', [$startOfWeek, $startOfWeek->copy()->endOfWeek()])
             ->get()
-            ->keyBy(fn($log) => $log->date->toDateString());
+            ->keyBy(fn ($log) => $log->date->toDateString());
 
         $weekDays = [];
         for ($i = 0; $i < 7; $i++) {

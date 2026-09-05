@@ -12,6 +12,7 @@ use App\Models\ExamAttempt;
 use App\Models\ExamOption;
 use App\Models\ExamQuestion;
 use App\Models\LessonCompletion;
+use App\Services\CertificateIssuanceService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -194,7 +195,7 @@ class ExamController extends Controller
     // STUDENT: submit an attempt
     // POST /api/exams/{exam}/attempt
     // -------------------------------------------------------------------------
-    public function submitAttempt(Request $request, Exam $exam): JsonResponse
+    public function submitAttempt(Request $request, Exam $exam, CertificateIssuanceService $certificates): JsonResponse
     {
         $user = $request->user();
 
@@ -246,35 +247,14 @@ class ExamController extends Controller
             }
         }
 
-        $certificate = null;
+        $issuedCertificate = $passed ? $certificates->issueIfEligible($user, $exam->course) : null;
+        $certificate = $issuedCertificate ? $this->formatCertificate($issuedCertificate) : null;
 
-        if ($passed) {
-            $lessonIds    = $exam->course->lessons->pluck('id')->toArray();
-            $completedIds = LessonCompletion::where('user_id', $user->id)
-                ->whereIn('lesson_id', $lessonIds)->pluck('lesson_id')->toArray();
-            $allCompleted = count($lessonIds) > 0 && count($completedIds) >= count($lessonIds);
-
-            if ($allCompleted) {
-                $existing = Certificate::where('user_id', $user->id)
-                    ->where('course_id', $exam->course_id)->first();
-
-                if (! $existing) {
-                    $existing = Certificate::create([
-                        'user_id'            => $user->id,
-                        'course_id'          => $exam->course_id,
-                        'certificate_number' => 'CERT-' . date('Y') . '-' . strtoupper(substr(md5(uniqid('', true)), 0, 8)),
-                        'issued_at'          => now(),
-                        'exam_score'         => $score,
-                    ]);
-                }
-
-                $certificate = $this->formatCertificate($existing);
-            }
-        }
-
-        $message = $passed
+        $message = $certificate
             ? "Congratulations! You scored {$score}%. Your certificate of completion has been issued!"
-            : "You scored {$score}%. The passing score is {$exam->passing_score}%. Review the material and try again.";
+            : ($passed
+                ? "You passed with {$score}%. Complete all lessons and lesson assessments to receive your certificate."
+                : "You scored {$score}%. The passing score is {$exam->passing_score}%. Review the material and try again.");
 
         return response()->json([
             'message'     => $message,

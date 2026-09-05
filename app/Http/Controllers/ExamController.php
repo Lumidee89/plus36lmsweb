@@ -11,6 +11,7 @@ use App\Models\ExamAttempt;
 use App\Models\ExamOption;
 use App\Models\ExamQuestion;
 use App\Models\LessonCompletion;
+use App\Services\CertificateIssuanceService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Inertia\Inertia;
@@ -118,7 +119,7 @@ class ExamController extends Controller
         ]);
     }
 
-    public function submitAttempt(Request $request, Exam $exam)
+    public function submitAttempt(Request $request, Exam $exam, CertificateIssuanceService $certificates)
     {
         $user = Auth::user();
 
@@ -172,31 +173,13 @@ class ExamController extends Controller
             }
         }
 
-        if ($passed) {
-            $lessonIds = $exam->course->lessons->pluck('id')->toArray();
-            $completedIds = LessonCompletion::where('user_id', $user->id)
-                ->whereIn('lesson_id', $lessonIds)->pluck('lesson_id')->toArray();
-            $allCompleted = count($lessonIds) > 0 && count($completedIds) >= count($lessonIds);
+        $certificate = $passed ? $certificates->issueIfEligible($user, $exam->course) : null;
 
-            if ($allCompleted) {
-                $exists = Certificate::where('user_id', $user->id)
-                    ->where('course_id', $exam->course_id)->exists();
-
-                if (!$exists) {
-                    Certificate::create([
-                        'user_id'            => $user->id,
-                        'course_id'          => $exam->course_id,
-                        'certificate_number' => 'CERT-' . date('Y') . '-' . strtoupper(substr(md5(uniqid('', true)), 0, 8)),
-                        'issued_at'          => now(),
-                        'exam_score'         => $score,
-                    ]);
-                }
-            }
-        }
-
-        $message = $passed
+        $message = $certificate
             ? "Congratulations! You scored {$score}%. Your certificate of completion has been issued!"
-            : "You scored {$score}%. The passing score is {$exam->passing_score}%. Review the material and try again.";
+            : ($passed
+                ? "You passed with {$score}%. Complete all lessons and lesson assessments to receive your certificate."
+                : "You scored {$score}%. The passing score is {$exam->passing_score}%. Review the material and try again.");
 
         return redirect()->route('courses.exam', $exam->course_id)->with('message', $message);
     }

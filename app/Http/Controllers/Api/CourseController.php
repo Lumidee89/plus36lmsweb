@@ -4,10 +4,16 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Activity;
+use App\Models\Assignment;
+use App\Models\AssignmentAttempt;
+use App\Models\AssignmentSubmission;
 use App\Models\Course;
+use App\Models\CourseWeek;
 use App\Models\Enrollment;
 use App\Models\Lesson;
+use App\Models\LessonCompletion;
 use App\Models\Topic;
+use App\Services\LessonAccessService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -16,9 +22,13 @@ use Illuminate\Validation\ValidationException;
 
 class CourseController extends Controller
 {
+    public function __construct(private LessonAccessService $lessonAccess) {}
+
     public function index(Request $request): JsonResponse
     {
-        $courses = Course::with(['faculty', 'user', 'lessons.topics'])
+        $courses = Course::where('status', 'published')
+            ->where(fn ($query) => $query->whereNull('organization_id')->orWhere('organization_id', $request->user()->organization_id))
+            ->with(['faculty', 'user', 'weeks.modules.lessons.assignment.questions.options', 'weeks.modules.lessons.topics', 'lessons.assignment.questions.options', 'lessons.topics'])
             ->latest()
             ->paginate($request->integer('per_page', 15));
 
@@ -30,7 +40,7 @@ class CourseController extends Controller
     public function show(Request $request, Course $course): JsonResponse
     {
         return response()->json([
-            'course' => $this->formatCourse($course->load(['faculty', 'user', 'lessons.topics']), $request),
+            'course' => $this->formatCourse($course->load(['faculty', 'user', 'weeks.modules.lessons.assignment.questions.options', 'weeks.modules.lessons.topics', 'lessons.assignment.questions.options', 'lessons.topics']), $request),
             'is_enrolled' => Enrollment::where('user_id', $request->user()->id)
                 ->where('course_id', $course->id)
                 ->exists(),
@@ -41,7 +51,7 @@ class CourseController extends Controller
     {
         $courses = $request->user()
             ->enrolledCourses()
-            ->with(['faculty', 'user', 'lessons.topics'])
+            ->with(['faculty', 'user', 'weeks.modules.lessons.assignment.questions.options', 'weeks.modules.lessons.topics', 'lessons.assignment.questions.options', 'lessons.topics'])
             ->latest('enrollments.created_at')
             ->get()
             ->map(fn (Course $course) => $this->formatCourse($course, $request));
@@ -68,6 +78,9 @@ class CourseController extends Controller
         $course = Course::create([
             ...$validated,
             'user_id' => $request->user()->id,
+            'organization_id' => $request->user()->organization_id,
+            'status' => $request->user()->role === 'admin' ? 'published' : 'draft',
+            'published_at' => $request->user()->role === 'admin' ? now() : null,
         ]);
 
         return response()->json([
@@ -95,6 +108,25 @@ class CourseController extends Controller
             'message' => 'Lesson added successfully',
             'lesson' => $lesson->load('topics'),
         ], 201);
+    }
+
+    public function storeWeek(Request $request, Course $course): JsonResponse
+    {
+        $this->ensureCanManageCourse($request, $course);
+        $validated = $request->validate(['title' => ['required', 'string', 'max:255'], 'description' => ['nullable', 'string', 'max:1000']]);
+        $week = $course->weeks()->create([...$validated, 'position' => $course->weeks()->count() + 1]);
+
+        return response()->json(['message' => 'Week added successfully', 'week' => $week], 201);
+    }
+
+    public function storeModule(Request $request, CourseWeek $week): JsonResponse
+    {
+        $week->load('course');
+        $this->ensureCanManageCourse($request, $week->course);
+        $validated = $request->validate(['title' => ['required', 'string', 'max:255'], 'description' => ['nullable', 'string', 'max:1000']]);
+        $module = $week->modules()->create([...$validated, 'position' => $week->modules()->count() + 1]);
+
+        return response()->json(['message' => 'Module added successfully', 'module' => $module], 201);
     }
 
     public function storeTopic(Request $request, Lesson $lesson): JsonResponse
@@ -210,13 +242,40 @@ class CourseController extends Controller
             'description' => $course->description,
             'price' => $course->price,
             'duration' => $course->duration,
+            'status' => $course->status,
             'faculty' => $course->faculty,
             'tutor' => $course->user,
             'lessons' => $course->lessons->map(fn (Lesson $lesson) => [
                 'id' => $lesson->id,
                 'title' => $lesson->title,
                 'order' => $lesson->order,
+                'locked' => $request->user()?->role === 'student' ? ! $this->lessonAccess->canStart($request->user(), $lesson->setRelation('course', $course)) : false,
+                'completed' => $request->user()?->role === 'student' ? LessonCompletion::where('user_id', $request->user()->id)->where('lesson_id', $lesson->id)->exists() : false,
+                'assignment' => $this->formatAssignment($lesson->assignment, $request),
                 'topics' => $lesson->topics->map(fn (Topic $topic) => $this->formatTopic($topic))->values(),
+            ])->values(),
+            'weeks' => $course->weeks->map(fn ($week) => [
+                'id' => $week->id,
+                'title' => $week->title,
+                'description' => $week->description,
+                'position' => $week->position,
+                'modules' => $week->modules->map(fn ($module) => [
+                    'id' => $module->id,
+                    'title' => $module->title,
+                    'description' => $module->description,
+                    'position' => $module->position,
+                    'lessons' => $module->lessons->map(fn (Lesson $lesson) => [
+                        'id' => $lesson->id,
+                        'title' => $lesson->title,
+                        'order' => $lesson->order,
+                        'estimated_minutes' => $lesson->estimated_minutes,
+                        'is_preview' => $lesson->is_preview,
+                        'locked' => $request->user()?->role === 'student' ? ! $this->lessonAccess->canStart($request->user(), $lesson->setRelation('course', $course)) : false,
+                        'completed' => $request->user()?->role === 'student' ? LessonCompletion::where('user_id', $request->user()->id)->where('lesson_id', $lesson->id)->exists() : false,
+                        'assignment' => $this->formatAssignment($lesson->assignment, $request),
+                        'topics' => $lesson->topics->map(fn (Topic $topic) => $this->formatTopic($topic))->values(),
+                    ])->values(),
+                ])->values(),
             ])->values(),
             'is_enrolled' => $request->user()
                 ? Enrollment::where('user_id', $request->user()->id)->where('course_id', $course->id)->exists()
@@ -245,6 +304,28 @@ class CourseController extends Controller
             'order' => $topic->order,
             'created_at' => $topic->created_at,
             'updated_at' => $topic->updated_at,
+        ];
+    }
+
+    private function formatAssignment(?Assignment $assignment, Request $request): ?array
+    {
+        if (! $assignment) return null;
+        $reveal = in_array($request->user()?->role, ['admin', 'tutor'], true);
+        $result = null;
+        if ($request->user()?->role === 'student') {
+            $result = $assignment->type === 'objective'
+                ? AssignmentAttempt::where('assignment_id',$assignment->id)->where('user_id',$request->user()->id)->orderByDesc('passed')->latest()->first()
+                : AssignmentSubmission::where('assignment_id',$assignment->id)->where('user_id',$request->user()->id)->first();
+        }
+        return [
+            'id'=>$assignment->id, 'type'=>$assignment->type, 'title'=>$assignment->title,
+            'instructions'=>$assignment->instructions, 'maximum_score'=>$assignment->maximum_score,
+            'passing_score'=>$assignment->passing_score, 'rubric'=>$assignment->rubric ?? [], 'due_at'=>$assignment->due_at,
+            'questions'=>$assignment->questions->map(fn($question)=>[
+                'id'=>$question->id, 'question'=>$question->question, 'position'=>$question->position,
+                'options'=>$question->options->map(function($option) use($reveal){$data=['id'=>$option->id,'option_text'=>$option->option_text];if($reveal)$data['is_correct']=$option->is_correct;return $data;})->values(),
+            ])->values(),
+            'result'=>$result ? ['score'=>$result->score,'passed'=>$assignment->type==='objective'?(bool)$result->passed:$result->status==='approved','status'=>$assignment->type==='objective'?($result->passed?'passed':'failed'):$result->status,'feedback'=>$result->mentor_feedback ?? null] : null,
         ];
     }
 }

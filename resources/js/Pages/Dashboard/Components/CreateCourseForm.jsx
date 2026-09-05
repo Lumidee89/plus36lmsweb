@@ -19,7 +19,7 @@ export default function CreateCourseForm({ faculties }) {
     return (
         <div className="bg-white p-8 rounded-[2.5rem] border border-gray-100 shadow-sm">
             <div className="mb-8">
-                <h2 className="text-2xl font-black text-[#1a1d21]">Launch New Course</h2>
+                <h2 className="text-2xl font-black text-[#1a1d21]">Create a Course Draft</h2>
                 <p className="text-gray-400 text-xs font-bold uppercase tracking-widest mt-1">
                     Expand the Plus36 curriculum
                 </p>
@@ -98,7 +98,7 @@ export default function CreateCourseForm({ faculties }) {
                         disabled={processing}
                         className="bg-[#1a1d21] text-white px-12 py-4 rounded-2xl font-black hover:bg-[#00d2d3] hover:text-[#1a1d21] transition-all disabled:opacity-50 shadow-lg shadow-black/10"
                     >
-                        {processing ? 'Publishing...' : 'Publish Course'}
+                        {processing ? 'Saving...' : 'Save & Build Curriculum'}
                     </button>
                 </div>
             </form>

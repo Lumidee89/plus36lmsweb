@@ -17,32 +17,46 @@ class Course extends Model
      */
     protected $fillable = [
         'user_id',
+        'organization_id',
         'faculty_id',
         'title',
         'description',
         'price',
         'duration',
+        'status',
+        'published_at',
     ];
+
     public function tutor(): BelongsTo
     {
         return $this->belongsTo(User::class, 'user_id');
     }
+
     public function faculty()
     {
         return $this->belongsTo(Faculty::class);
     }
+
     public function lessons()
     {
         return $this->hasMany(Lesson::class);
     }
+
+    public function weeks()
+    {
+        return $this->hasMany(CourseWeek::class)->orderBy('position');
+    }
+
     public function user()
     {
         return $this->belongsTo(User::class, 'user_id');
     }
+
     public function students()
     {
         return $this->belongsToMany(User::class, 'enrollments')->withPivot('amount_paid')->withTimestamps();
     }
+
     public function enrollments()
     {
         return $this->hasMany(Enrollment::class);

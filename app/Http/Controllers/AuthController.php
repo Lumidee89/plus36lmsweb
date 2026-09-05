@@ -2,13 +2,13 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\User;
 use App\Mail\WelcomeEmail;
+use App\Models\User;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
 use Inertia\Inertia; // Import the Inertia facade
 use Laravel\Socialite\Facades\Socialite;
@@ -18,9 +18,11 @@ class AuthController extends Controller
     /**
      * Show the login interface using Inertia.
      */
-    public function showLogin()
+    public function showLogin(Request $request)
     {
-        return Inertia::render('Auth/Login');
+        return Inertia::render('Auth/Login', [
+            'status' => $request->session()->get('status'),
+        ]);
     }
 
     /**
@@ -78,12 +80,12 @@ class AuthController extends Controller
             try {
                 Mail::to($user->email)->send(new WelcomeEmail($user));
             } catch (\Exception $e) {
-                Log::error("Mail failure: " . $e->getMessage());
+                Log::error('Mail failure: '.$e->getMessage());
             }
 
             $user->activities()->create([
                 'description' => 'Created a new student account with Google',
-                'type' => 'auth'
+                'type' => 'auth',
             ]);
         }
 
@@ -92,7 +94,7 @@ class AuthController extends Controller
 
         $user->activities()->create([
             'description' => 'You signed into the academy portal with Google',
-            'type' => 'auth'
+            'type' => 'auth',
         ]);
 
         return redirect()->intended('/dashboard');
@@ -107,7 +109,7 @@ class AuthController extends Controller
             'name' => 'required|string|max:255',
             'email' => 'required|email|unique:users,email',
             'password' => 'required|min:6',
-            'role' => 'required|in:student,tutor'
+            'role' => 'required|in:student,tutor',
         ]);
 
         $user = User::create([
@@ -120,14 +122,14 @@ class AuthController extends Controller
         try {
             Mail::to($user->email)->send(new WelcomeEmail($user));
         } catch (\Exception $e) {
-            Log::error("Mail failure: " . $e->getMessage());
+            Log::error('Mail failure: '.$e->getMessage());
         }
 
         Auth::login($user);
 
         $user->activities()->create([
-            'description' => 'Created a new ' . $user->role . ' account',
-            'type' => 'auth'
+            'description' => 'Created a new '.$user->role.' account',
+            'type' => 'auth',
         ]);
 
         return redirect()->intended('/dashboard');
@@ -148,7 +150,7 @@ class AuthController extends Controller
 
             auth()->user()->activities()->create([
                 'description' => 'You signed into the academy portal',
-                'type' => 'auth'
+                'type' => 'auth',
             ]);
 
             return redirect()->intended('/dashboard');
@@ -167,12 +169,12 @@ class AuthController extends Controller
         if (Auth::check()) {
             auth()->user()->activities()->create([
                 'description' => 'You signed out of the portal',
-                'type' => 'auth'
+                'type' => 'auth',
             ]);
         }
 
         Auth::logout();
-        
+
         $request->session()->invalidate();
         $request->session()->regenerateToken();
 

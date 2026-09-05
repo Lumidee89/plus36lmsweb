@@ -11,7 +11,7 @@ function GoogleIcon() {
     );
 }
 
-export default function Login() {
+export default function Login({ status }) {
     const { data, setData, post, processing, errors } = useForm({
         email: '',
         password: '',
@@ -57,6 +57,12 @@ export default function Login() {
                         <h2 className="text-3xl font-black text-[#1a1d21] tracking-tighter mt-2">Welcome Back.</h2>
                     </div>
 
+                    {status && (
+                        <div className="mb-6 rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-xs font-bold leading-relaxed text-emerald-700">
+                            {status}
+                        </div>
+                    )}
+
                     <a
                         href="/auth/google/redirect"
                         className="mb-6 flex w-full items-center justify-center gap-3 rounded-2xl border border-gray-200 bg-white px-4 py-4 text-xs font-black uppercase tracking-widest text-[#1a1d21] shadow-sm transition-all hover:border-[#00d2d3] hover:bg-gray-50"
@@ -86,8 +92,17 @@ export default function Login() {
                         </div>
 
                         <div>
-                            <label className="text-[9px] font-black text-gray-400 uppercase tracking-[0.2em] mb-2 block">Password</label>
+                            <div className="mb-2 flex items-center justify-between gap-4">
+                                <label htmlFor="password" className="text-[9px] font-black text-gray-400 uppercase tracking-[0.2em] block">Password</label>
+                                <Link
+                                    href="/forgot-password"
+                                    className="text-[9px] font-black uppercase tracking-[0.15em] text-[#00aeb0] transition-colors hover:text-[#1a1d21]"
+                                >
+                                    Forgot password?
+                                </Link>
+                            </div>
                             <input 
+                                id="password"
                                 type="password" 
                                 value={data.password}
                                 placeholder="••••••••"

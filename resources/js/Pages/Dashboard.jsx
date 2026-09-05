@@ -3,21 +3,43 @@ import { Link, Head, usePage, useForm, router } from '@inertiajs/react';
 import StudentIDCard from './Dashboard/Components/StudentIDCard';
 import CreateCourseForm from './Dashboard/Components/CreateCourseForm';
 import CourseContentManager from './Dashboard/Components/CourseContentManager';
+import PlatformManagement from './Dashboard/Components/PlatformManagement';
 
 // Reusable Stats Card Component
 const StatsCard = ({ label, value, icon, color = "#00d2d3" }) => (
-    <div className="bg-white p-6 rounded-[2rem] border border-gray-50 shadow-sm flex items-center gap-5 group hover:shadow-md transition-all">
-        <div className="p-4 rounded-2xl transition-colors group-hover:bg-[#1a1d21]/5" style={{ backgroundColor: `${color}15`, color: color }}>
-            {icon}
+    <div className="group min-h-36 rounded-2xl border border-slate-100 bg-white p-5 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg first:bg-[#087f81] first:text-white">
+        <div className="flex items-start justify-between gap-4">
+            <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400 group-first:text-white/70">{label}</p>
+            <div className="grid h-9 w-9 place-items-center rounded-full border border-slate-200 transition-colors group-first:border-white/30" style={{ color }}>
+                {icon}
+            </div>
         </div>
-        <div>
-            <p className="text-[10px] font-black uppercase text-gray-400 tracking-widest mb-1">{label}</p>
-            <h3 className="text-2xl font-black text-[#1a1d21] tracking-tight">{value}</h3>
-        </div>
+        <h3 className="mt-5 text-3xl font-black tracking-tighter text-[#1a1d21] group-first:text-white">{value}</h3>
+        <p className="mt-2 text-[9px] font-bold text-slate-400 group-first:text-white/60">Updated from live academy data</p>
     </div>
 );
 
-export default function Dashboard({ auth, stats, user_data, faculties, courses, enrolledCourses, lessons, tutor_students, tutor_course_breakdown, my_withdrawals, available_balance, all_students, all_tutors, all_withdrawals, certificates }) {
+const AnalyticsChart = ({ role, stats, courses = [], enrolledCourses = [] }) => {
+    const source = role === 'student'
+        ? enrolledCourses.map(course => Number(course.progress_pct || 0))
+        : courses.map(course => Number(course.enrollments_count || course.lessons?.length || 0));
+    const fallback = role === 'admin'
+        ? [stats.total_students, stats.total_tutors, stats.total_courses, stats.total_earnings / 1000]
+        : [stats.total_courses, stats.total_students, stats.total_earnings / 1000, stats.total_withdrawals / 1000];
+    const values = [...source, ...fallback].filter(value => Number.isFinite(Number(value))).slice(0, 7);
+    while (values.length < 7) values.push(0);
+    const max = Math.max(...values, 1);
+
+    return <div className="rounded-2xl border border-slate-100 bg-white p-6 shadow-sm">
+        <div className="flex items-start justify-between"><div><h3 className="text-sm font-black">Learning analytics</h3><p className="mt-1 text-[10px] font-bold uppercase tracking-widest text-slate-400">Live activity overview</p></div><span className="rounded-full bg-[#e7fbfb] px-3 py-1 text-[9px] font-black text-[#087f81]">This period</span></div>
+        <div className="mt-8 flex h-48 items-end justify-between gap-3 border-b border-slate-100 px-2">
+            {values.map((value, index) => <div key={index} className="flex h-full flex-1 items-end"><div title={String(value)} className={`w-full rounded-t-full transition-all ${index === 3 ? 'bg-[#1a1d21]' : index === 2 ? 'bg-[#00d2d3]' : 'bg-[#087f81]'}`} style={{ height: `${Math.max(14, (Number(value) / max) * 100)}%`, opacity: index > 3 ? .55 : 1 }} /></div>)}
+        </div>
+        <div className="mt-3 flex justify-between px-2 text-[9px] font-black uppercase text-slate-300">{['M','T','W','T','F','S','S'].map((day, index) => <span key={index}>{day}</span>)}</div>
+    </div>;
+};
+
+export default function Dashboard({ auth, stats, user_data, faculties, courses, enrolledCourses, lessons, tutor_students, tutor_course_breakdown, my_withdrawals, available_balance, all_students, all_tutors, all_withdrawals, certificates, platform, assessment_submissions = [], objective_attempts = [] }) {
     const { url, props } = usePage();
     const flash = props.flash || {};
     const urlParams = new URLSearchParams(url.split('?')[1] || "");
@@ -25,6 +47,7 @@ export default function Dashboard({ auth, stats, user_data, faculties, courses, 
 
     const userRole = auth.user.role;
     const [showCreateForm, setShowCreateForm] = React.useState(false);
+    const [reviewDrafts, setReviewDrafts] = React.useState({});
 
     // Tutor exam management state
     const [examCourseId, setExamCourseId] = React.useState('');
@@ -126,6 +149,36 @@ export default function Dashboard({ auth, stats, user_data, faculties, courses, 
         Withdrawals: () => <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" /></svg>
     };
 
+    const navigation = {
+        admin: [
+            ['courses', 'Courses', Icons.Courses],
+            ['students', 'Students', Icons.Users],
+            ['faculty', 'Faculty', Icons.Faculty],
+            ['revenue', 'Revenue', Icons.Revenue],
+            ['withdrawals', 'Withdrawals', Icons.Withdrawals],
+            ['platform', 'Platform', Icons.Settings],
+        ],
+        tutor: [
+            ['my-courses', 'My Courses', Icons.Courses],
+            ['assessment-reviews', 'Assessment Scoring', Icons.Certs],
+            ['earnings', 'Earnings', Icons.Revenue],
+            ['my-students', 'My Students', Icons.Users],
+            ['exams', 'Exams', Icons.Certs],
+            ['withdrawals', 'Withdrawals', Icons.Withdrawals],
+        ],
+        student: [
+            ['available-courses', 'Explore Courses', Icons.Courses],
+            ['my-courses', 'My Learning', Icons.Courses],
+            ['certs', 'Certificates', Icons.Certs],
+        ],
+    };
+
+    const navLinkClass = (active) => `group flex items-center gap-3 rounded-xl px-3 py-3 text-sm transition-all ${
+        active
+            ? 'bg-[#e7fbfb] font-black text-[#087f81] shadow-sm'
+            : 'font-bold text-slate-400 hover:bg-slate-50 hover:text-[#1a1d21]'
+    }`;
+
     const RecentActivities = ({ activities }) => (
         <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-gray-50">
             <h3 className="text-xs font-black uppercase text-gray-400 tracking-widest mb-6 px-1">Recent Activities</h3>
@@ -223,90 +276,60 @@ export default function Dashboard({ auth, stats, user_data, faculties, courses, 
     };
 
     return (
-        <div className="min-h-screen bg-[#f8f9fd] font-sans">
+        <div className="min-h-screen bg-[#eef0f2] p-0 font-sans text-[#1a1d21] sm:p-4 xl:p-7">
             <Head title="Dashboard | Plus36 Academy" />
-
-            {/* TOP NAVIGATION HEADER */}
-            <header className="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-gray-100 px-4 md:px-8 py-4">
-                <div className="max-w-[1600px] mx-auto flex items-center justify-between">
-                    <Link href="/" className="flex items-center">
-                        <img 
-                            src="/logo.png" 
-                            alt="Plus36 Academy" 
-                            className="h-16 w-auto object-contain hover:opacity-80 transition-opacity" 
-                        />
-                    </Link>
-                    <div className="flex items-center space-x-6">
-                        <div className="hidden md:flex items-center bg-gray-50 border border-gray-100 px-4 py-2 rounded-full w-64 text-xs font-bold text-gray-500">
-                            Search courses...
-                        </div>
-                        <button className="relative p-2 text-gray-400">
-                            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /></svg>
-                            <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full border-2 border-white"></span>
-                        </button>
-                    </div>
-                </div>
-            </header>
-            
-            <div className="max-w-[1600px] mx-auto flex flex-col lg:flex-row gap-6 p-6">
-                
+            <div className="mx-auto grid min-h-[calc(100vh-3.5rem)] max-w-[1700px] overflow-hidden bg-[#f8f9f9] shadow-2xl shadow-slate-300/60 sm:rounded-[2rem] lg:grid-cols-[240px_minmax(0,1fr)]">
                 {/* SIDEBAR NAVIGATION */}
-                <aside className="w-full lg:w-64 flex-shrink-0">
-                    <div className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-gray-50">
-                        <nav className="space-y-6">
-                            <div>
-                                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-4 px-4">Overview</p>
-                                <div className="space-y-1 text-sm">
-                                    <Link href="/dashboard" className={`flex items-center space-x-3 p-3 rounded-2xl transition ${!currentTab ? 'bg-teal-50 text-[#00d2d3] font-bold' : 'text-gray-400 hover:bg-gray-50'}`}>
-                                        <Icons.Dashboard />
-                                        <span>Dashboard</span>
-                                    </Link>
-
-                                    {userRole === 'admin' && (
-                                        <>
-                                            <Link href="?tab=courses" className={`flex items-center space-x-3 p-3 rounded-2xl transition ${currentTab === 'courses' ? 'bg-teal-50 text-[#00d2d3] font-bold' : 'text-gray-400 hover:bg-gray-50'}`}><Icons.Courses /><span>Courses</span></Link>
-                                            <Link href="?tab=students" className={`flex items-center space-x-3 p-3 rounded-2xl transition ${currentTab === 'students' ? 'bg-teal-50 text-[#00d2d3] font-bold' : 'text-gray-400 hover:bg-gray-50'}`}><Icons.Users /><span>Students</span></Link>
-                                            <Link href="?tab=faculty" className={`flex items-center space-x-3 p-3 rounded-2xl transition ${currentTab === 'faculty' ? 'bg-teal-50 text-[#00d2d3] font-bold' : 'text-gray-400 hover:bg-gray-50'}`}><Icons.Faculty /><span>Faculty</span></Link>
-                                            <Link href="?tab=revenue" className={`flex items-center space-x-3 p-3 rounded-2xl transition ${currentTab === 'revenue' ? 'bg-teal-50 text-[#00d2d3] font-bold' : 'text-gray-400 hover:bg-gray-50'}`}><Icons.Revenue /><span>Revenue</span></Link>
-                                            <Link href="?tab=withdrawals" className={`flex items-center space-x-3 p-3 rounded-2xl transition ${currentTab === 'withdrawals' ? 'bg-teal-50 text-[#00d2d3] font-bold' : 'text-gray-400 hover:bg-gray-50'}`}><Icons.Withdrawals /><span>Withdrawals</span></Link>
-                                            <Link href="?tab=settings" className={`flex items-center space-x-3 p-3 rounded-2xl transition ${currentTab === 'settings' ? 'bg-teal-50 text-[#00d2d3] font-bold' : 'text-gray-400 hover:bg-gray-50'}`}><Icons.Settings /><span>Settings</span></Link>
-                                        </>
-                                    )}
-
-                                    {userRole === 'tutor' && (
-                                        <>
-                                            <Link href="?tab=my-courses" className={`flex items-center space-x-3 p-3 rounded-2xl transition ${currentTab === 'my-courses' ? 'bg-teal-50 text-[#00d2d3] font-bold' : 'text-gray-400 hover:bg-gray-50'}`}><Icons.Courses /><span>My Courses</span></Link>
-                                            <Link href="?tab=earnings" className={`flex items-center space-x-3 p-3 rounded-2xl transition ${currentTab === 'earnings' ? 'bg-teal-50 text-[#00d2d3] font-bold' : 'text-gray-400 hover:bg-gray-50'}`}><Icons.Revenue /><span>Earnings</span></Link>
-                                            <Link href="?tab=my-students" className={`flex items-center space-x-3 p-3 rounded-2xl transition ${currentTab === 'my-students' ? 'bg-teal-50 text-[#00d2d3] font-bold' : 'text-gray-400 hover:bg-gray-50'}`}><Icons.Users /><span>My Students</span></Link>
-                                            <Link href="?tab=exams" className={`flex items-center space-x-3 p-3 rounded-2xl transition ${currentTab === 'exams' ? 'bg-teal-50 text-[#00d2d3] font-bold' : 'text-gray-400 hover:bg-gray-50'}`}><Icons.Certs /><span>Exams</span></Link>
-                                            <Link href="?tab=withdrawals" className={`flex items-center space-x-3 p-3 rounded-2xl transition ${currentTab === 'withdrawals' ? 'bg-teal-50 text-[#00d2d3] font-bold' : 'text-gray-400 hover:bg-gray-50'}`}><Icons.Withdrawals /><span>Withdrawals</span></Link>
-                                            <Link href="?tab=settings" className={`flex items-center space-x-3 p-3 rounded-2xl transition ${currentTab === 'settings' ? 'bg-teal-50 text-[#00d2d3] font-bold' : 'text-gray-400 hover:bg-gray-50'}`}><Icons.Settings /><span>Settings</span></Link>
-                                        </>
-                                    )}
-
-                                    {userRole === 'student' && (
-                                        <>
-                                            <Link href="?tab=available-courses" className={`flex items-center space-x-3 p-3 rounded-2xl transition ${currentTab === 'available-courses' ? 'bg-teal-50 text-[#00d2d3] font-bold' : 'text-gray-400 hover:bg-gray-50'}`}><Icons.Courses /><span>Available Courses</span></Link>
-                                                <Link href="?tab=my-courses" className={`flex items-center space-x-3 p-3 rounded-2xl transition ${currentTab === 'my-courses' ? 'bg-teal-50 text-[#00d2d3] font-bold' : 'text-gray-400 hover:bg-gray-50'}`}><Icons.Courses /><span>My Learning</span></Link>
-                                            <Link href="?tab=certs" className={`flex items-center space-x-3 p-3 rounded-2xl transition ${currentTab === 'certs' ? 'bg-teal-50 text-[#00d2d3] font-bold' : 'text-gray-400 hover:bg-gray-50'}`}><Icons.Certs /><span>Certs/Transcript</span></Link>
-                                            <Link href="?tab=settings" className={`flex items-center space-x-3 p-3 rounded-2xl transition ${currentTab === 'settings' ? 'bg-teal-50 text-[#00d2d3] font-bold' : 'text-gray-400 hover:bg-gray-50'}`}><Icons.Settings /><span>Settings</span></Link>
-                                        </>
-                                    )}
-                                </div>
-                            </div>
-
-                            <div className="pt-6 border-t border-gray-100">
-                                <Link href="/logout" method="post" as="button" className="flex items-center space-x-3 p-3 text-gray-400 hover:text-red-500 transition w-full font-bold">
+                <aside className="border-b border-slate-100 bg-white p-5 lg:flex lg:min-h-full lg:flex-col lg:border-b-0 lg:border-r lg:p-6">
+                    <Link href="/" className="inline-flex items-center">
+                        <img src="/logo.png" alt="Plus36 Academy" className="h-14 w-auto object-contain" />
+                    </Link>
+                    <nav className="mt-8 flex gap-2 overflow-x-auto pb-2 lg:block lg:space-y-1 lg:overflow-visible">
+                        <p className="mb-3 hidden px-3 text-[9px] font-black uppercase tracking-[0.22em] text-slate-300 lg:block">Workspace</p>
+                        <Link href="/dashboard" className={`${navLinkClass(!currentTab)} shrink-0`}>
+                            <Icons.Dashboard /><span>Dashboard</span>
+                        </Link>
+                        {(navigation[userRole] || []).map(([tab, label, Icon]) => (
+                            <Link key={tab} href={`?tab=${tab}`} className={`${navLinkClass(currentTab === tab)} shrink-0`}>
+                                <Icon /><span>{label}</span>
+                            </Link>
+                        ))}
+                    </nav>
+                    <div className="mt-auto hidden border-t border-slate-100 pt-5 lg:block">
+                        <Link href="?tab=settings" className={navLinkClass(currentTab === 'settings')}>
+                            <Icons.Settings /><span>Settings</span>
+                        </Link>
+                        <Link href="/logout" method="post" as="button" className="mt-1 flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm font-bold text-slate-400 transition hover:bg-red-50 hover:text-red-500">
                                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path></svg>
                                     <span>Logout</span>
-                                </Link>
-                            </div>
-                        </nav>
+                        </Link>
                     </div>
                 </aside>
 
+                <div className="min-w-0">
+                    <header className="flex flex-col gap-4 border-b border-slate-100 bg-white px-5 py-4 sm:flex-row sm:items-center sm:justify-between lg:px-8">
+                        <label className="flex w-full max-w-md items-center gap-3 rounded-xl bg-[#f7f8f8] px-4 py-3 text-slate-400">
+                            <svg className="h-5 w-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="m21 21-4.35-4.35m1.35-5.65a7 7 0 1 1-14 0 7 7 0 0 1 14 0Z" /></svg>
+                            <input type="search" placeholder="Search your workspace" className="w-full border-0 bg-transparent p-0 text-xs font-bold text-[#1a1d21] placeholder:text-slate-300 focus:ring-0" />
+                        </label>
+                        <div className="flex items-center gap-3">
+                            <button type="button" aria-label="Notifications" className="relative grid h-11 w-11 place-items-center rounded-xl border border-slate-100 bg-white text-slate-500 transition hover:border-[#00d2d3]">
+                                <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 17h5l-1.4-1.4A2 2 0 0 1 18 14.2V11a6 6 0 1 0-12 0v3.2a2 2 0 0 1-.6 1.4L4 17h11Zm0 0v1a3 3 0 1 1-6 0v-1" /></svg>
+                                <span className="absolute right-2 top-2 h-2 w-2 rounded-full border-2 border-white bg-[#00d2d3]" />
+                            </button>
+                            <div className="h-10 w-10 overflow-hidden rounded-xl bg-[#e7fbfb]">
+                                {auth.user.avatar_url ? <img src={auth.user.avatar_url} alt="" className="h-full w-full object-cover" /> : <span className="grid h-full w-full place-items-center font-black text-[#087f81]">{auth.user.name.charAt(0)}</span>}
+                            </div>
+                            <div className="hidden sm:block">
+                                <p className="max-w-40 truncate text-xs font-black">{auth.user.name}</p>
+                                <p className="mt-0.5 text-[9px] font-bold uppercase tracking-widest text-slate-400">{userRole}</p>
+                            </div>
+                        </div>
+                    </header>
+
+                    <div className="grid gap-6 p-5 lg:p-8 xl:grid-cols-[minmax(0,1fr)_280px]">
                 {/* MAIN CONTENT AREA */}
-                <main className="flex-1 space-y-6">
+                <main className="min-w-0 space-y-6">
                     {flash.message && (
                         <div className="bg-[#00d2d3] text-[#1a1d21] p-4 rounded-2xl font-black flex items-center justify-between shadow-lg">
                             <div className="flex items-center space-x-3">
@@ -325,14 +348,15 @@ export default function Dashboard({ auth, stats, user_data, faculties, courses, 
                     {!currentTab ? (
                         <>
                             {/* HERO SECTION */}
-                            <div className="relative bg-gradient-to-r from-[#1a1d21] to-[#2d3238] rounded-[2.5rem] p-10 text-white shadow-xl overflow-hidden">
-                                <div className="relative z-10">
-                                    <h1 className="text-4xl font-extrabold mb-2 tracking-tight">Welcome back, {auth.user.name.split(' ')[0]}!</h1>
-                                    <p className="text-gray-400 font-bold uppercase text-[10px] tracking-[0.2em]">Plus36 Academy {userRole} Portal</p>
+                            <div className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
+                                <div>
+                                    <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#087f81]">Plus36 Academy · {userRole} portal</p>
+                                    <h1 className="mt-2 text-4xl font-black tracking-tighter text-[#1a1d21]">Dashboard</h1>
+                                    <p className="mt-2 text-sm font-medium text-slate-400">Welcome back, {auth.user.name.split(' ')[0]}. Here’s what’s happening today.</p>
                                 </div>
-                                <div className="absolute right-[-20px] bottom-[-20px] opacity-10">
-                                    <Icons.Dashboard />
-                                </div>
+                                <Link href={userRole === 'student' ? '?tab=available-courses' : userRole === 'tutor' ? '?tab=my-courses' : '?tab=courses'} className="inline-flex items-center justify-center rounded-full bg-[#1a1d21] px-6 py-3 text-[10px] font-black uppercase tracking-widest text-white transition hover:bg-[#00d2d3] hover:text-black">
+                                    View {userRole === 'student' ? 'Courses' : 'Workspace'}
+                                </Link>
                             </div>
 
                             {/* DYNAMIC ANALYTICS GRID */}
@@ -354,10 +378,18 @@ export default function Dashboard({ auth, stats, user_data, faculties, courses, 
                                     </>
                                 )}
                                 {userRole === 'student' && (
-                                    <StatsCard label="Enrolled Courses" value={stats.total_courses || 0} icon={<Icons.Courses />} color="#00d2d3" />
+                                    <>
+                                        <StatsCard label="Enrolled Courses" value={stats.total_courses || 0} icon={<Icons.Courses />} color="#00d2d3" />
+                                        <StatsCard label="Completed Courses" value={stats.completed_courses || 0} icon={<Icons.Certs />} color="#087f81" />
+                                        <StatsCard label="Certificates" value={stats.total_certificates || 0} icon={<Icons.Certs />} color="#00d2d3" />
+                                        <StatsCard label="Courses Available" value={stats.available_courses || 0} icon={<Icons.Courses />} color="#087f81" />
+                                    </>
                                 )}
                             </div>
+                            <AnalyticsChart role={userRole} stats={stats} courses={userRole === 'tutor' ? tutor_course_breakdown : courses} enrolledCourses={enrolledCourses} />
                         </>
+                    ) : currentTab === 'platform' && userRole === 'admin' ? (
+                        <PlatformManagement platform={platform || {}} courses={courses} />
                     ) : currentTab === 'courses' && userRole === 'admin' ? (
                         <div className="bg-white p-8 rounded-[2.5rem] border border-gray-100 shadow-sm">
                             <div className="flex justify-between items-center mb-8">
@@ -384,7 +416,11 @@ export default function Dashboard({ auth, stats, user_data, faculties, courses, 
                                                 <td className="py-4">{course.user?.name || 'Unknown'}</td>
                                                 <td className="py-4">{course.lessons?.length || 0} Lessons</td>
                                                 <td className="py-4 text-right">
-                                                    <button className="text-[#00d2d3] hover:underline">View Details</button>
+                                                    {course.status === 'published' ? (
+                                                        <span className="text-[9px] font-black uppercase tracking-widest text-emerald-600">Published</span>
+                                                    ) : (
+                                                        <Link href={`/courses/${course.id}/publish`} method="patch" as="button" className="rounded-full bg-[#1a1d21] px-4 py-2 text-[9px] font-black uppercase tracking-widest text-white hover:bg-[#00d2d3] hover:text-black">Publish</Link>
+                                                    )}
                                                 </td>
                                             </tr>
                                         ))}
@@ -839,6 +875,12 @@ export default function Dashboard({ auth, stats, user_data, faculties, courses, 
                                     <CourseContentManager courses={tutorCourses} lessons={lessons.filter(l => tutorCourses.some(c => c.id === l.course_id))} />
                                 </>
                             )}
+                        </div>
+                    ) : currentTab === 'assessment-reviews' && userRole === 'tutor' ? (
+                        <div className="space-y-8"><div><h2 className="text-3xl font-black text-[#1a1d21]">Assessment scoring</h2><p className="mt-1 text-[10px] font-black uppercase tracking-widest text-gray-400">Objective results and project reviews</p></div>
+                            <section><div className="mb-4 flex items-center justify-between"><div><h3 className="text-lg font-black">Objective quiz results</h3><p className="text-xs text-gray-400">Automatically scored attempts from your students</p></div><span className="rounded-full bg-[#e7fbfb] px-3 py-1 text-[10px] font-black text-[#087f81]">{objective_attempts.length} attempts</span></div>{objective_attempts.length?<div className="overflow-hidden rounded-[2rem] border border-gray-100 bg-white shadow-sm"><div className="overflow-x-auto"><table className="w-full text-left"><thead className="bg-gray-50 text-[9px] font-black uppercase tracking-widest text-gray-400"><tr><th className="px-5 py-4">Student</th><th className="px-5 py-4">Assessment</th><th className="px-5 py-4">Questions</th><th className="px-5 py-4">Score</th><th className="px-5 py-4">Result</th><th className="px-5 py-4">Date</th></tr></thead><tbody>{objective_attempts.map(attempt=><tr key={attempt.id} className="border-t border-gray-50 text-xs"><td className="px-5 py-4"><p className="font-black text-[#1a1d21]">{attempt.user?.name}</p><p className="mt-1 text-[10px] text-gray-400">{attempt.user?.email}</p></td><td className="px-5 py-4"><p className="font-bold">{attempt.assignment?.title}</p><p className="mt-1 text-[10px] text-gray-400">{attempt.assignment?.lesson?.course?.title} · {attempt.assignment?.lesson?.title}</p></td><td className="px-5 py-4 font-bold">{attempt.correct_answers}/{attempt.total_questions}</td><td className="px-5 py-4"><p className="text-lg font-black text-[#087f81]">{attempt.score}/{attempt.assignment?.maximum_score}</p><p className="text-[9px] text-gray-400">Cutoff {attempt.assignment?.passing_score}</p></td><td className="px-5 py-4"><span className={`rounded-full px-3 py-1 text-[9px] font-black uppercase ${attempt.passed?'bg-emerald-100 text-emerald-700':'bg-red-100 text-red-600'}`}>{attempt.passed?'Passed':'Failed'}</span></td><td className="px-5 py-4 text-[10px] font-bold text-gray-400">{new Date(attempt.created_at).toLocaleDateString()}</td></tr>)}</tbody></table></div></div>:<div className="rounded-[2rem] border border-dashed bg-white p-10 text-center text-sm font-bold text-gray-300">No objective attempts yet.</div>}</section>
+                            <div><h3 className="text-lg font-black">Project submissions</h3><p className="mb-4 text-xs text-gray-400">Review submitted links, notes, and provide a score</p></div>
+                            {assessment_submissions.length ? <div className="grid gap-5">{assessment_submissions.map(submission=>{const draft=reviewDrafts[submission.id]||{score:submission.score??'',mentor_feedback:submission.mentor_feedback??''};return <div key={submission.id} className="rounded-[2rem] border border-gray-100 bg-white p-7 shadow-sm"><div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-[9px] font-black uppercase tracking-widest text-[#087f81]">{submission.assignment?.lesson?.course?.title}</p><h3 className="mt-1 text-lg font-black">{submission.assignment?.title}</h3><p className="mt-1 text-xs font-bold text-gray-400">{submission.user?.name} · {submission.assignment?.lesson?.title}</p></div><span className={`rounded-full px-3 py-1 text-[9px] font-black uppercase ${submission.status==='approved'?'bg-emerald-100 text-emerald-700':submission.status==='changes_requested'?'bg-red-100 text-red-600':'bg-amber-100 text-amber-700'}`}>{submission.status}</span></div><div className="mt-5 grid gap-2 text-xs">{submission.github_url&&<a className="font-bold text-[#087f81] underline" href={submission.github_url} target="_blank" rel="noreferrer">Open GitHub submission</a>}{submission.live_url&&<a className="font-bold text-[#087f81] underline" href={submission.live_url} target="_blank" rel="noreferrer">Open live project</a>}{submission.notes&&<p className="rounded-xl bg-gray-50 p-4 leading-6 text-gray-600">{submission.notes}</p>}</div><div className="mt-5 grid gap-3 md:grid-cols-[160px_1fr_auto]"><label className="text-[9px] font-black uppercase text-gray-400">Score / {submission.assignment?.maximum_score}<input type="number" min="0" max={submission.assignment?.maximum_score} value={draft.score} onChange={e=>setReviewDrafts(prev=>({...prev,[submission.id]:{...draft,score:e.target.value}}))} className="mt-2 w-full rounded-xl border-gray-200"/></label><label className="text-[9px] font-black uppercase text-gray-400">Tutor feedback<textarea rows="2" value={draft.mentor_feedback} onChange={e=>setReviewDrafts(prev=>({...prev,[submission.id]:{...draft,mentor_feedback:e.target.value}}))} className="mt-2 w-full rounded-xl border-gray-200"/></label><button type="button" onClick={()=>router.patch(`/assignment-submissions/${submission.id}`,draft,{preserveScroll:true})} className="self-end rounded-xl bg-[#1a1d21] px-5 py-3 text-[10px] font-black uppercase text-white hover:bg-[#00d2d3] hover:text-black">Save score</button></div><p className="mt-3 text-[10px] text-gray-400">Cutoff: {submission.assignment?.passing_score}. Scores at or above the cutoff automatically unlock the next lesson.</p></div>})}</div>:<div className="rounded-[2rem] border border-dashed bg-white p-16 text-center text-sm font-bold text-gray-300">No project assessments submitted yet.</div>}
                         </div>
                     ) : currentTab === 'earnings' && userRole === 'tutor' ? (
                         <div className="space-y-6">
@@ -1430,7 +1472,7 @@ export default function Dashboard({ auth, stats, user_data, faculties, courses, 
                 </main>
 
                 {/* RIGHT PANEL */}
-                <aside className="w-full lg:w-80 space-y-6">
+                <aside className="space-y-6">
                     {userRole === 'student' ? (
                         <StudentIDCard user={auth.user} track={user_data?.enrolled_track} />
                     ) : (
@@ -1444,6 +1486,8 @@ export default function Dashboard({ auth, stats, user_data, faculties, courses, 
                     )}
                     <RecentActivities activities={props.recent_activities} />
                 </aside>
+                    </div>
+                </div>
             </div>
         </div>
     );

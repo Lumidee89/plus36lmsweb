@@ -69,6 +69,7 @@ export default function CourseLearning({ course, completedLessonIds: initial }) 
     const nextTopic = currentIdx < allTopics.length - 1 ? allTopics[currentIdx + 1] : null;
 
     const navigate = (topicEntry) => {
+        if (topicEntry.lesson.locked) return;
         setActiveLessonId(topicEntry.lesson.id);
         setActiveTopicId(topicEntry.id);
         window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -121,7 +122,7 @@ export default function CourseLearning({ course, completedLessonIds: initial }) 
 
         if (topic.type === 'text') {
             return (
-                <div className="text-gray-700 text-[15px] leading-relaxed space-y-4"
+                <div className="space-y-4 text-[15px] leading-relaxed text-gray-700 [&_h2]:mt-6 [&_h2]:text-2xl [&_h2]:font-black [&_h3]:mt-5 [&_h3]:text-xl [&_h3]:font-black [&_ol]:my-4 [&_ol]:list-decimal [&_ol]:pl-7 [&_li]:my-1.5 [&_ul]:my-4 [&_ul]:list-disc [&_ul]:pl-7"
                     dangerouslySetInnerHTML={{ __html: topic.content || '<p>No content available.</p>' }}
                 />
             );
@@ -226,18 +227,19 @@ export default function CourseLearning({ course, completedLessonIds: initial }) 
                             return (
                                 <div key={lesson.id}>
                                     <button
+                                        disabled={lesson.locked}
                                         onClick={() => {
                                             setActiveLessonId(lesson.id);
                                             if (lesson.topics?.length) setActiveTopicId(lesson.topics[0].id);
                                         }}
-                                        className={`w-full flex items-center gap-3 px-3 py-3 rounded-2xl text-left transition ${isOpen ? 'bg-teal-50' : 'hover:bg-gray-50'}`}
+                                        className={`w-full flex items-center gap-3 px-3 py-3 rounded-2xl text-left transition ${lesson.locked ? 'cursor-not-allowed opacity-45' : isOpen ? 'bg-teal-50' : 'hover:bg-gray-50'}`}
                                     >
                                         <div className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 border-2 text-[10px] font-black transition-all ${
                                             isDone    ? 'bg-[#00d2d3] border-[#00d2d3] text-black' :
                                             isOpen    ? 'border-[#00d2d3] text-[#00d2d3]' :
                                                         'border-gray-200 text-gray-400'
                                         }`}>
-                                            {isDone ? (
+                                            {lesson.locked ? '🔒' : isDone ? (
                                                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
                                                 </svg>

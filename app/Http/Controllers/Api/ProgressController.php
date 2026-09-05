@@ -4,15 +4,17 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Achievement;
+use App\Models\Lesson;
 use App\Models\LessonCompletion;
 use App\Models\UserActivityLog;
 use App\Services\AchievementService;
+use App\Services\LessonAccessService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 
 class ProgressController extends Controller
 {
-    public function __construct(private AchievementService $achievements) {}
+    public function __construct(private AchievementService $achievements, private LessonAccessService $lessonAccess) {}
 
     public function show(Request $request)
     {
@@ -26,6 +28,7 @@ class ProgressController extends Controller
 
         $allAchievements = Achievement::all()->map(function ($achievement) use ($user) {
             $earned = $user->achievements->firstWhere('id', $achievement->id);
+
             return [
                 'key' => $achievement->key,
                 'name' => $achievement->name,
@@ -41,6 +44,7 @@ class ProgressController extends Controller
             'streak' => [
                 'current' => $streak?->current_streak ?? 0,
                 'longest' => $streak?->longest_streak ?? 0,
+                'checked_in_today' => $streak?->last_active_date?->isToday() ?? false,
             ],
             'stats' => [
                 'hours' => round($totalMinutes / 60, 1),
@@ -64,9 +68,21 @@ class ProgressController extends Controller
         return response()->json(['message' => 'Activity recorded']);
     }
 
+    public function checkIn(Request $request)
+    {
+        $streak = $request->user()->streak()->firstOrCreate([], ['current_streak' => 0, 'longest_streak' => 0]);
+        $alreadyCheckedIn = $streak->last_active_date?->isToday() ?? false;
+        $streak->recordActivity();
+        $this->achievements->checkAndAward($request->user()->load(['streak', 'activityLogs', 'enrolledCourses.lessons']));
+
+        return response()->json(['message' => $alreadyCheckedIn ? 'You already checked in today.' : 'Daily check-in complete!', 'streak' => ['current' => $streak->current_streak, 'longest' => $streak->longest_streak, 'checked_in_today' => true]]);
+    }
+
     public function completeLesson(Request $request, int $lessonId)
     {
         $user = $request->user();
+        $lesson = Lesson::with(['course', 'assignment'])->findOrFail($lessonId);
+        $this->lessonAccess->assertCanStart($user, $lesson);
 
         LessonCompletion::firstOrCreate(
             ['user_id' => $user->id, 'lesson_id' => $lessonId],
@@ -89,7 +105,9 @@ class ProgressController extends Controller
     {
         return $user->enrolledCourses->filter(function ($course) use ($user) {
             $totalLessons = $course->lessons->count();
-            if ($totalLessons === 0) return false;
+            if ($totalLessons === 0) {
+                return false;
+            }
 
             $completed = LessonCompletion::where('user_id', $user->id)
                 ->whereIn('lesson_id', $course->lessons->pluck('id'))
@@ -107,7 +125,7 @@ class ProgressController extends Controller
         $logs = UserActivityLog::where('user_id', $userId)
             ->whereBetween('date', [$startOfWeek, $startOfWeek->copy()->endOfWeek()])
             ->get()
-            ->keyBy(fn($log) => $log->date->toDateString());
+            ->keyBy(fn ($log) => $log->date->toDateString());
 
         $weekDays = [];
         for ($i = 0; $i < 7; $i++) {

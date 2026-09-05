@@ -17,6 +17,7 @@ class User extends Authenticatable
      */
     protected $fillable = [
         'name',
+        'organization_id',
         'email',
         'password',
         'role',
@@ -51,22 +52,27 @@ class User extends Authenticatable
         if ($this->google_avatar) {
             return $this->google_avatar;
         }
-        return 'https://ui-avatars.com/api/?name=' . urlencode($this->name) . '&background=0d9488&color=fff&size=128';
+
+        return 'https://ui-avatars.com/api/?name='.urlencode($this->name).'&background=0d9488&color=fff&size=128';
     }
+
     public function courses()
     {
         return $this->hasMany(Course::class);
     }
-    public function activities() {
+
+    public function activities()
+    {
         return $this->hasMany(Activity::class)->latest()->limit(5);
     }
+
     public function enrolledCourses()
     {
         return $this->belongsToMany(
             Course::class,
             'enrollments'
         )->withPivot('amount_paid')
-        ->withTimestamps();
+            ->withTimestamps();
     }
 
     public function streak()
