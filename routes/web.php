@@ -13,6 +13,8 @@ use App\Http\Controllers\SiteController;
 use App\Http\Controllers\WithdrawalController;
 use Illuminate\Support\Facades\Route;
 
+Route::get('/cohort-payment/return', [\App\Http\Controllers\CohortPaymentController::class, 'callback'])->name('cohorts.payment-return');
+
 Route::get('/', [SiteController::class, 'index'])->name('home');
 
 Route::get('/dashboard', [SiteController::class, 'dashboard'])
@@ -20,6 +22,8 @@ Route::get('/dashboard', [SiteController::class, 'dashboard'])
     ->name('dashboard');
 
 Route::middleware('auth')->group(function () {
+    Route::post('/cohorts/{cohort}/join', [PlatformController::class, 'joinCohort'])->middleware('throttle:10,1');
+    Route::post('/cohorts/{cohort}/verify', [PlatformController::class, 'verifyCohort'])->middleware('throttle:20,1');
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
     Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
@@ -74,6 +78,8 @@ Route::middleware(['auth', 'admin'])->group(function () {
     Route::post('/platform/organizations', [PlatformController::class, 'createOrganization']);
     Route::post('/platform/subscriptions', [PlatformController::class, 'subscribe']);
     Route::post('/platform/cohorts', [PlatformController::class, 'createCohort']);
+    Route::patch('/platform/cohorts/{cohort}', [PlatformController::class, 'updateCohort']);
+    Route::delete('/platform/cohorts/{cohort}', [PlatformController::class, 'deleteCohort']);
     Route::post('/platform/departments', [PlatformController::class, 'createDepartment']);
     Route::post('/platform/academic-sessions', [PlatformController::class, 'createAcademicSession']);
     Route::post('/admin/banners', [BannerController::class, 'store'])->name('banners.store');

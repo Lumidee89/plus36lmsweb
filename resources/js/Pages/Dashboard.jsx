@@ -1,3 +1,5 @@
+import TutorCohorts from './Dashboard/Components/TutorCohorts';
+import CohortList from '../Components/CohortList';
 import React from 'react';
 import { Link, Head, usePage, useForm, router } from '@inertiajs/react';
 import StudentIDCard from './Dashboard/Components/StudentIDCard';
@@ -39,7 +41,7 @@ const AnalyticsChart = ({ role, stats, courses = [], enrolledCourses = [] }) => 
     </div>;
 };
 
-export default function Dashboard({ auth, stats, user_data, faculties, courses, enrolledCourses, lessons, tutor_students, tutor_course_breakdown, my_withdrawals, available_balance, all_students, all_tutors, all_withdrawals, certificates, platform, assessment_submissions = [], objective_attempts = [] }) {
+export default function Dashboard({ auth, stats, user_data, faculties, courses, enrolledCourses, lessons, tutor_students, tutor_course_breakdown, my_withdrawals, available_balance, all_students, all_tutors, all_withdrawals, certificates, platform, assessment_submissions = [], objective_attempts = [], cohorts = [], tutor_cohorts = [] }) {
     const { url, props } = usePage();
     const flash = props.flash || {};
     const urlParams = new URLSearchParams(url.split('?')[1] || "");
@@ -430,6 +432,7 @@ export default function Dashboard({ auth, stats, user_data, faculties, courses, 
                         </div>
                     ): currentTab === 'available-courses' && userRole === 'student' ? (
                     <div className="space-y-8">
+                        <CohortList cohorts={cohorts} />
                         <div className="flex justify-between items-center">
                             <h2 className="text-3xl font-black text-[#1a1d21]">Available Courses</h2>
                             <p className="text-[10px] font-black uppercase text-gray-400 tracking-widest bg-white px-4 py-2 rounded-full border border-gray-100">
@@ -969,6 +972,7 @@ export default function Dashboard({ auth, stats, user_data, faculties, courses, 
                         </div>
                     ) : currentTab === 'my-students' && userRole === 'tutor' ? (
                         <div className="space-y-6">
+                            <TutorCohorts cohorts={tutor_cohorts} />
                             <div className="flex justify-between items-center">
                                 <div>
                                     <h2 className="text-3xl font-black text-[#1a1d21]">My Students</h2>

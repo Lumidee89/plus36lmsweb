@@ -24,6 +24,7 @@ class SiteController extends Controller
 
         return Inertia::render('Home', [
             'totalEnrolled' => $totalEnrolled,
+            'cohorts' => app(\App\Services\CohortService::class)->listing(Auth::user()),
             'featuredCourses' => Course::with(['user', 'lessons'])
                 ->latest()
                 ->take(3)
@@ -36,6 +37,7 @@ class SiteController extends Controller
     {
         $user = Auth::user();
         $role = $user->role;
+        app(\App\Services\CohortService::class)->restoreCourseAccess($user);
         $stats = [];
 
         // Role-specific collections (default empty)
@@ -76,7 +78,7 @@ class SiteController extends Controller
                 'organization' => $user->organization_id ? DB::table('organizations')->find($user->organization_id) : null,
                 'plans' => DB::table('subscription_plans')->orderBy('price')->get(),
                 'subscription' => $user->organization_id ? DB::table('subscriptions')->where('organization_id', $user->organization_id)->latest()->first() : null,
-                'cohorts' => DB::table('cohorts')->latest()->get(),
+                'cohorts' => app(\App\Services\CohortService::class)->listing($user),
                 'departments' => $user->organization_id ? DB::table('departments')->where('organization_id', $user->organization_id)->get() : [],
                 'academic_sessions' => $user->organization_id ? DB::table('academic_sessions')->where('organization_id', $user->organization_id)->latest()->get() : [],
                 'banners' => DB::table('mobile_banners')->latest()->get(),
@@ -185,6 +187,7 @@ class SiteController extends Controller
             'lessons' => $lessons,
             'stats' => $stats,
             'tutor_students' => $tutorStudents,
+            'tutor_cohorts' => $role === 'tutor' ? app(\App\Services\CohortService::class)->tutorRoster($user) : [],
             'tutor_course_breakdown' => $tutorCourseBreakdown,
             'my_withdrawals' => $myWithdrawals,
             'available_balance' => $availableBalance,
@@ -194,6 +197,7 @@ class SiteController extends Controller
             'certificates' => $certificates ?? [],
             'recent_activities' => $user->activities()->latest()->limit(5)->get(),
             'platform' => $platform,
+            'cohorts' => app(\App\Services\CohortService::class)->listing($user),
             'assessment_submissions' => $assessmentSubmissions,
             'objective_attempts' => $objectiveAttempts,
         ]);

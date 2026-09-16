@@ -49,12 +49,19 @@ class CourseController extends Controller
 
     public function enrolled(Request $request): JsonResponse
     {
+        app(\App\Services\CohortService::class)->restoreCourseAccess($request->user());
+        $memberships = DB::table('cohort_students as cs')->join('cohorts as c', 'c.id', '=', 'cs.cohort_id')
+            ->where('cs.user_id', $request->user()->id)
+            ->select('c.id', 'c.course_id', 'c.name', 'c.starts_on', 'c.ends_on', 'c.status')
+            ->orderBy('c.starts_on')->get()->groupBy('course_id');
         $courses = $request->user()
             ->enrolledCourses()
             ->with(['faculty', 'user', 'weeks.modules.lessons.assignment.questions.options', 'weeks.modules.lessons.topics', 'lessons.assignment.questions.options', 'lessons.topics'])
             ->latest('enrollments.created_at')
             ->get()
-            ->map(fn (Course $course) => $this->formatCourse($course, $request));
+            ->map(fn (Course $course) => [...$this->formatCourse($course, $request),
+                'enrolled_cohorts' => $memberships->get($course->id, collect())->values(),
+            ]);
 
         return response()->json([
             'courses' => $courses,

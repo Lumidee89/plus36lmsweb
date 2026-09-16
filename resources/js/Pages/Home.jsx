@@ -1,6 +1,7 @@
+import CohortList from '../Components/CohortList';
 import { Link, Head, usePage } from '@inertiajs/react';
 
-export default function Home({ totalEnrolled, featuredCourses, faculties }) {
+export default function Home({ totalEnrolled, featuredCourses, faculties, cohorts = [] }) {
     const { auth } = usePage().props;
     return (
         <div className="min-h-screen bg-[#fbfcfd] text-[#1a1d21] font-sans selection:bg-[#00d2d3] selection:text-black">
@@ -198,6 +199,8 @@ export default function Home({ totalEnrolled, featuredCourses, faculties }) {
                     </div>
                 </div>
             </section>
+
+            <div className="mx-auto max-w-7xl px-6 py-10"><CohortList cohorts={cohorts} /></div>
 
             {/* Dark Mode Statistics */}
             <section className="py-32 bg-[#1a1d21] relative overflow-hidden">

@@ -10,6 +10,8 @@ use App\Http\Controllers\AssignmentController;
 use App\Http\Controllers\BannerController;
 use Illuminate\Support\Facades\Route;
 
+Route::post('/cohort-payments/webhook', [\App\Http\Controllers\CohortPaymentController::class, 'webhook']);
+
 Route::post('/register', [AuthController::class, 'register']);
 Route::post('/login', [AuthController::class, 'login']);
 Route::get('/banners', [BannerController::class, 'index']);
@@ -31,9 +33,11 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/organizations', [PlatformController::class, 'createOrganization']);
     Route::get('/subscription-plans', [PlatformController::class, 'plans']);
     Route::post('/subscriptions', [PlatformController::class, 'subscribe']);
+    Route::get('/tutor/cohorts', [PlatformController::class, 'tutorCohorts']);
     Route::get('/cohorts', [PlatformController::class, 'cohorts']);
     Route::post('/cohorts', [PlatformController::class, 'createCohort']);
-    Route::post('/cohorts/{cohort}/join', [PlatformController::class, 'joinCohort']);
+    Route::post('/cohorts/{cohort}/join', [PlatformController::class, 'joinCohort'])->middleware('throttle:10,1');
+    Route::post('/cohorts/{cohort}/verify', [PlatformController::class, 'verifyCohort'])->middleware('throttle:20,1');
     Route::post('/departments', [PlatformController::class, 'createDepartment']);
     Route::post('/academic-sessions', [PlatformController::class, 'createAcademicSession']);
     Route::post('/devices', [PlatformController::class, 'registerDevice']);

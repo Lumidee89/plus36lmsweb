@@ -20,7 +20,7 @@ class PlatformController extends Controller
         return response()->json([
             'organization' => $organizationId ? DB::table('organizations')->find($organizationId) : null,
             'subscription' => $organizationId ? DB::table('subscriptions')->join('subscription_plans', 'subscription_plans.id', '=', 'subscriptions.subscription_plan_id')->where('organization_id', $organizationId)->select('subscriptions.*', 'subscription_plans.name as plan_name', 'subscription_plans.features')->latest('subscriptions.id')->first() : null,
-            'cohorts' => DB::table('cohorts')->when($organizationId, fn ($query) => $query->where('organization_id', $organizationId))->latest()->get(),
+            'cohorts' => DB::table('cohorts')->where('status', '!=', 'deleted')->when($organizationId, fn ($query) => $query->where('organization_id', $organizationId))->latest()->get(),
         ]);
     }
 
@@ -52,35 +52,83 @@ class PlatformController extends Controller
 
     public function cohorts(Request $request): JsonResponse
     {
-        $query = DB::table('cohorts')->join('courses', 'courses.id', '=', 'cohorts.course_id')->select('cohorts.*', 'courses.title as course_title');
-        if ($request->user()->role === 'student') {
-            $query->join('cohort_students', 'cohort_students.cohort_id', '=', 'cohorts.id')->where('cohort_students.user_id', $request->user()->id);
-        } elseif ($request->user()->role === 'tutor') {
-            $query->where('cohorts.tutor_id', $request->user()->id);
-        } elseif ($request->user()->organization_id) {
-            $query->where('cohorts.organization_id', $request->user()->organization_id);
-        }
+        return response()->json(['cohorts' => app(\App\Services\CohortService::class)->listing($request->user())]);
+    }
 
-        return response()->json(['cohorts' => $query->get()]);
+    public function tutorCohorts(Request $request): JsonResponse
+    {
+        return response()->json(['cohorts' => app(\App\Services\CohortService::class)->tutorRoster($request->user())]);
     }
 
     public function createCohort(Request $request): JsonResponse
     {
         abort_unless(in_array($request->user()->role, ['admin', 'tutor'], true), 403);
-        $data = $request->validate(['course_id' => 'required|exists:courses,id', 'name' => 'required|string|max:255', 'starts_on' => 'required|date', 'ends_on' => 'nullable|date|after_or_equal:starts_on', 'capacity' => 'nullable|integer|min:1']);
+        $data = $request->validate([
+            'course_id' => 'required|exists:courses,id', 'name' => 'required|string|max:255',
+            'starts_on' => 'required|date', 'ends_on' => 'nullable|date|after_or_equal:starts_on',
+            'capacity' => 'required|integer|min:1|max:100000', 'price' => 'required|numeric|min:0|max:9999999999.99|decimal:0,2',
+        ]);
         $course = Course::findOrFail($data['course_id']);
         abort_if($request->user()->role === 'tutor' && $course->user_id !== $request->user()->id, 403);
-        $id = DB::table('cohorts')->insertGetId([...$data, 'organization_id' => $request->user()->organization_id, 'tutor_id' => $course->user_id, 'status' => 'active', 'created_at' => now(), 'updated_at' => now()]);
+        abort_if($request->user()->organization_id && $course->organization_id !== $request->user()->organization_id, 403);
+        $id = DB::table('cohorts')->insertGetId([...$data, 'organization_id' => $course->organization_id, 'tutor_id' => $course->user_id, 'status' => 'active', 'created_at' => now(), 'updated_at' => now()]);
 
         return response()->json(['cohort' => DB::table('cohorts')->find($id)], 201);
     }
 
+    private function managedCohort(Request $request, int $id): object
+    {
+        abort_unless($request->user()->role === 'admin', 403);
+        $cohort = DB::table('cohorts')->where('id', $id)->where('status', '!=', 'deleted')->lockForUpdate()->first();
+        abort_unless($cohort, 404);
+        abort_if($request->user()->organization_id && $cohort->organization_id !== $request->user()->organization_id, 403);
+        return $cohort;
+    }
+
+    public function updateCohort(Request $request, int $cohort): JsonResponse
+    {
+        abort_unless($request->user()->role === 'admin', 403);
+        $data = $request->validate([
+            'course_id' => 'required|exists:courses,id', 'name' => 'required|string|max:255',
+            'starts_on' => 'required|date', 'ends_on' => 'nullable|date|after_or_equal:starts_on',
+            'capacity' => 'required|integer|min:1|max:100000', 'price' => 'required|numeric|min:0|max:9999999999.99|decimal:0,2',
+            'status' => 'required|in:active,draft,closed',
+        ]);
+        DB::transaction(function () use ($request, $cohort, $data) {
+            $current = $this->managedCohort($request, $cohort);
+            $members = DB::table('cohort_students')->where('cohort_id', $cohort)->count();
+            $reserved = DB::table('cohort_checkouts')->where('cohort_id', $cohort)->where('status', 'pending')->where('expires_at', '>', now())->count();
+            abort_if($data['capacity'] < $members + $reserved, 422, 'Capacity cannot be less than enrolled students plus reserved seats.');
+            $course = Course::findOrFail($data['course_id']);
+            abort_if($request->user()->organization_id && $course->organization_id !== $request->user()->organization_id, 403);
+            if ($course->id !== $current->course_id) {
+                abort_if($members > 0 || DB::table('cohort_checkouts')->where('cohort_id', $cohort)->exists(), 422, 'The course cannot be changed after enrollments or payments have started.');
+            }
+            DB::table('cohorts')->where('id', $cohort)->update([...$data, 'organization_id' => $course->organization_id, 'tutor_id' => $course->user_id, 'updated_at' => now()]);
+        });
+        return response()->json(['message' => 'Cohort updated.']);
+    }
+
+    public function deleteCohort(Request $request, int $cohort): JsonResponse
+    {
+        DB::transaction(function () use ($request, $cohort) {
+            $this->managedCohort($request, $cohort);
+            // Retain enrollment and checkout history for course access and payment reconciliation.
+            DB::table('cohorts')->where('id', $cohort)->update(['status' => 'deleted', 'updated_at' => now()]);
+        });
+        return response()->json(['message' => 'Cohort deleted. Existing course access and payment records are retained.']);
+    }
+
     public function joinCohort(Request $request, int $cohort): JsonResponse
     {
-        abort_unless($request->user()->role === 'student', 403);
-        DB::table('cohort_students')->updateOrInsert(['cohort_id' => $cohort, 'user_id' => $request->user()->id], ['updated_at' => now(), 'created_at' => now()]);
+        return response()->json(app(\App\Services\CohortService::class)->checkout($request->user(), $cohort));
+    }
 
-        return response()->json(['message' => 'Cohort joined.']);
+    public function verifyCohort(Request $request, int $cohort): JsonResponse
+    {
+        $data = $request->validate(['reference' => 'required|string|max:100']);
+        abort_unless(DB::table('cohort_checkouts')->where('cohort_id', $cohort)->where('reference', $data['reference'])->exists(), 404);
+        return response()->json(app(\App\Services\CohortService::class)->complete($data['reference'], $request->user()));
     }
 
     public function createDepartment(Request $request): JsonResponse
